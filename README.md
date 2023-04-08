@@ -17,6 +17,8 @@ Random Projection Ensemble 기법을 사용해 ITR 분류 모형의 변수 선�
 2. 해당 모형에 RP Ensemble을 적용하여 선택된 변수와 true parameter 비교해 일치 여부 확인
 3. LASSO 등 기존 변수 선택 모형과 성능 비교
 
+> 고차원 데이터에 학습 가능한 개인화 맞춤 분류 모형 구축
+
 
 #### 참고자료
 - Estimating Individualized Treatment Rules Using Outcome Weighted Learning(Yingqi Zhao, Donglin Zeng, A. John Rush, Michael R. Kosorok, Journal of the American Statistical Association, Vol. 107, No. 499, pp. 1106-1118)
