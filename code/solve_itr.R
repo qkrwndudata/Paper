@@ -1,30 +1,17 @@
+## ipop()을 사용해 ITR classifier를 fitting 및 predict하는 함수 구현 코드 입니다.
+## ipop()은 QP 알고리즘을 사용해 제약 조건 하에서 최적화 문제를 풀기 위해 사용되는 코드로 대표적으로 SVM 등의 모형이 해당 함수를 사용합니다.
+
+
+# 라이브러리 호출
 library(quantreg)
 library(kernlab)
 library(truncnorm)
-#install.packages('svmpath')
 library(svmpath)
 
-# simulation setting
-set.seed(2022021328)
-n <- 500; p <- 50
-
-x <- matrix(runif(n * p, -1, 1), n, p)   # x: 500 x 50
-x1 <- x[,1]; x2 <- x[,2]; x3 <- x[,3]; x5 <- x[,5]
-x6 <- x[,6]; x7 <- x[,7]; x8 <- x[,8]
-
-A <- sample(c(-1, 1), n, replace = TRUE, prob = c(0.5, 0.5))
-
-t1 <- 0.442*(1-x1-x2)*A   # linear: 0.612
-t2 <- (x2 - 0.25*x1^2-1)*A   # poly: 0.604
-t3 <- (0.5 - x1^2 - x2^2)*(x1^2 + x2^2 - 0.3)*A   # sigmoid: 0.624
-t4 <- (1 - x1^3 + exp(x3^2 + x5) +0.6 * x6 - (x7 + x8)^2)*A   # poly: 0.606
-
-Q <- 1 + 2*x1 + x2 + 0.5*x3 + t4
-R <- rtruncnorm(n, a = 0, mean = Q, sd = 1)
-
-
+# (linear/nonlinear)ITR fitting function 
 fit_ITR <- function(x, A, R, pi, kappa, kern, gamma){
   n <- nrow(x)
+  # linear 적합: 아래 K부터 l, u까지의 값은 제약식(lagrange multipliers)을 dual problem으로 풀어 정의했습니다.
   if (kern == 'linear') {
     K <- poly.kernel(x, param.kernel = 1)
     H <- K * (A %*% t(A))
@@ -32,18 +19,19 @@ fit_ITR <- function(x, A, R, pi, kappa, kern, gamma){
     a <- matrix(A, 1, n)
     b <- 0; r <- 0
     l <- rep(0, n); u <- kappa * R / pi
-    obj <- ipop(c, H, a, b, l, u, r)
+    obj <- ipop(c, H, a, b, l, u, r)   # ipop solve
     
-    alpha <- obj@primal
-    sv.index <- which(l[1]+1e-7 < alpha & alpha < u[1]-1e-7)
+    alpha <- obj@primal   # dual solutions
+    sv.index <- which(l[1]+1e-7 < alpha & alpha < u[1]-1e-7)   # support vectors
     
-    beta <- apply(alpha * A * x, 2, sum)  
-    temp <- A[sv.index] - x[sv.index,] %*% beta
-    beta0 <- mean(temp)
+    beta <- apply(alpha * A * x, 2, sum)   # primal solution
+    temp <- A[sv.index] - x[sv.index,] %*% beta  
+    beta0 <- mean(temp)   # intercept
     
     sol <- list(kern = 'linear', alpha = alpha, coef = beta, intercept = beta0)
     return(sol)
   }
+  # polynomial 적합
   else if (kern == 'poly') {
     K <- poly.kernel(x, param.kernel = 2)   
     H <- K * (A %*% t(A))
@@ -51,7 +39,7 @@ fit_ITR <- function(x, A, R, pi, kappa, kern, gamma){
     a <- matrix(A, 1, n)
     b <- 0; r <- 0
     l <- rep(0, n); u <- kappa * R / pi
-    obj <- ipop(c, H, a, b, l, u, r)
+    obj <- ipop(c, H, a, b, l, u, r)   
     
     alpha <- obj@primal
     sv.index <- which(l[1]+1e-7 < alpha & alpha < u[1]-1e-7)   
@@ -64,6 +52,7 @@ fit_ITR <- function(x, A, R, pi, kappa, kern, gamma){
     sol <- list(treat = A, train = x, kern = 'poly', alpha = alpha, intercept = theta0)
     return(sol)
   }
+  # rbf 적합
   else if (kern == 'radial') {
     K <- radial.kernel(x)
     H <- K * (A %*% t(A))
@@ -84,6 +73,7 @@ fit_ITR <- function(x, A, R, pi, kappa, kern, gamma){
     sol <- list(treat = A, train = x, kern = 'radial', alpha = alpha, intercept = theta0)
     return(sol)
   }
+  # sigmoid 적합
   else if (kern == 'sigmoid') {
     K <- tanh(gamma * x %*% t(x))
     H <- K * (A %*% t(A))
@@ -108,6 +98,7 @@ fit_ITR <- function(x, A, R, pi, kappa, kern, gamma){
   
 }
 
+# fitting한 모델로 예측하는 함수
 predict_ITR <- function(model, newdata){  
   if (model$kern == 'linear'){
     y.hat <- as.vector(ifelse(model$intercept + newdata %*% model$coef > 0, 1, -1))
@@ -132,14 +123,3 @@ predict_ITR <- function(model, newdata){
 
 sim <- fit_ITR(x, A, R, 0.5, 0.05, kern = 'poly', gamma = 0.1)
 pred <- predict_ITR(sim, x)
-
-
-
-# define value function: loss로 대체하든가 다른 value function을 사용하든가
-val.func <- function(pred, R){  # A: treatment 추가
-  outcome <- cbind(pred, R)
-  value <- (sum(subset(outcome, pred == 1)[,2]) + sum(subset(outcome, pred == -1)[,2])) / length(pred)
-  return(value)
-}
-
-val.func(pred, R)
